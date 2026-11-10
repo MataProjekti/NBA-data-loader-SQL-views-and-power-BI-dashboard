@@ -60,3 +60,8 @@ def test_no_orphan_teams_in_fact(conn):
         )
     ).scalar()
     assert n == 0
+    def test_data_is_fresh(conn):
+    hours = conn.execute(
+        text("SELECT extract(epoch FROM now() - max(fetched_at)) / 3600 FROM raw.api_responses")
+    ).scalar()
+    assert hours < 24, f"Poslednje preuzimanje pre {hours:.1f} sati"

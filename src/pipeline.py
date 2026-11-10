@@ -1,7 +1,8 @@
 import json
 import os
 from pathlib import Path
-
+import time
+from datetime import datetime
 import requests
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
@@ -18,17 +19,26 @@ API_URL = "https://sportscore.com/api/widget/matches/"
 SPORT = "basketball"
 
 
-def extract():
-    response = requests.get(
-        API_URL,
-        params={"sport": SPORT, "limit": 50, "src": "basketball-data-platform"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    if not payload.get("matches"):
-        raise ValueError("API je vratio prazan odgovor")
-    return payload
+def extract(attempts=3, wait_seconds=30):
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(
+                API_URL,
+                params={"sport": SPORT, "limit": 50, "src": "basketball-data-platform"},
+                timeout=30,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not payload.get("matches"):
+                raise ValueError("API je vratio prazan odgovor")
+            return payload
+        except Exception as e:
+            last_error = e
+            print(f"Pokusaj {attempt}/{attempts} nije uspeo: {e}")
+            if attempt < attempts:
+                time.sleep(wait_seconds)
+    raise last_error
 
 
 def load_raw(conn, payload):
@@ -45,8 +55,8 @@ def run_sql_file(conn, name):
     sql = (SQL_DIR / name).read_text(encoding="utf-8")
     conn.exec_driver_sql(sql)
 
-
 def main():
+    print("=== Pokretanje:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "===")
     payload = extract()
     print("Preuzeto utakmica:", len(payload["matches"]))
 
@@ -59,7 +69,3 @@ def main():
         fact = conn.execute(text("SELECT count(*) FROM mart.fact_games")).scalar()
 
     print("core.games:", games, "| dim_teams:", teams, "| fact_games:", fact)
-
-
-if __name__ == "__main__":
-    main()
